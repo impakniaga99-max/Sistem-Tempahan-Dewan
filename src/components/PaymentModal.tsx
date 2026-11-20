@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { FPX_BANKS } from '../data/venues.ts';
+import { processPayment } from '../services/bookingService.ts';
 import type { BookingRecord, PaymentMethodId } from '../types.ts';
 import { formatDateMalay, formatDateTimeMalay, formatRM } from '../utils/format.ts';
 
@@ -81,20 +82,12 @@ export function PaymentModal({
     setProcessing(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 800));
-      const res = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bookingId: booking.id,
-          paymentMethod: method,
-          paymentBank: method === 'fpx' ? `${fpxBank} (${fpxType.toUpperCase()})` : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Pembayaran gagal disahkan.');
-      }
-      onPaymentSuccess(data.booking);
+      const updatedBooking = await processPayment(
+        booking.id,
+        method,
+        method === 'fpx' ? `${fpxBank} (${fpxType.toUpperCase()})` : undefined
+      );
+      onPaymentSuccess(updatedBooking);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Ralat berlaku semasa memproses bayaran.'

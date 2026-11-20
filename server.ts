@@ -660,6 +660,10 @@ async function startServer() {
     return res.json({ booking: bookings[index] });
   });
 
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'API endpoint tidak ditemui.' });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

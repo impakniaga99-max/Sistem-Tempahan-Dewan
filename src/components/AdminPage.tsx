@@ -13,6 +13,13 @@ import {
   XCircle,
 } from 'lucide-react';
 import { VENUES } from '../data/venues.ts';
+import {
+  adminLogin,
+  adminLogout,
+  cancelAdminBooking,
+  confirmAdminBooking,
+  fetchAdminOverview,
+} from '../services/bookingService.ts';
 import type {
   AdminOverviewResponse,
   BookingRecord,
@@ -65,23 +72,16 @@ export function AdminPage({
     setLoadingData(true);
     setDataError('');
     try {
-      const res = await fetch('/api/admin/overview', {
-        headers: {
-          Authorization: `Bearer ${activeToken}`,
-        },
-      });
-      if (res.status === 401) {
+      const data = await fetchAdminOverview(activeToken);
+      setOverview(data);
+    } catch (err) {
+      const status = (err as Error & { status?: number })?.status;
+      if (status === 401) {
         sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
         setToken('');
         setOverview(null);
         return;
       }
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Gagal memuatkan data papan pemuka.');
-      }
-      setOverview(data);
-    } catch (err) {
       setDataError(
         err instanceof Error ? err.message : 'Berlaku ralat rangkaian.'
       );
@@ -101,20 +101,9 @@ export function AdminPage({
     setLoginError('');
     setLoginLoading(true);
     try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username.trim(),
-          password,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Log masuk gagal.');
-      }
-      sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, data.token);
-      setToken(data.token);
+      const newToken = await adminLogin(username.trim(), password);
+      sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, newToken);
+      setToken(newToken);
       setUsername('');
       setPassword('');
     } catch (err) {
@@ -128,10 +117,7 @@ export function AdminPage({
 
   async function handleLogout() {
     if (token) {
-      await fetch('/api/admin/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
+      await adminLogout(token);
     }
     sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
     setToken('');
@@ -141,17 +127,7 @@ export function AdminPage({
   async function handleConfirmBooking(bookingId: string) {
     setActionBusyId(bookingId);
     try {
-      const res = await fetch(
-        `/api/admin/bookings/${encodeURIComponent(bookingId)}/confirm`,
-        {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Pengesahan gagal.');
-      }
+      await confirmAdminBooking(token, bookingId);
       await fetchOverview(token);
       onDataMutated();
     } catch (err) {
@@ -164,17 +140,7 @@ export function AdminPage({
   async function handleCancelBooking(bookingId: string) {
     setActionBusyId(bookingId);
     try {
-      const res = await fetch(
-        `/api/admin/bookings/${encodeURIComponent(bookingId)}/cancel`,
-        {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Pembatalan gagal.');
-      }
+      await cancelAdminBooking(token, bookingId);
       await fetchOverview(token);
       onDataMutated();
     } catch (err) {

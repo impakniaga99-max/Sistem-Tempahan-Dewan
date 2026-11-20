@@ -10,6 +10,10 @@ import {
   Users,
 } from 'lucide-react';
 import { ADDONS, TIME_SLOTS, VENUES } from '../data/venues.ts';
+import {
+  createBooking,
+  fetchMonthlyAvailability,
+} from '../services/bookingService.ts';
 import type {
   BookingRecord,
   DayAvailability,
@@ -95,16 +99,10 @@ export function AvailabilityBookingSection({
     setLoadingCal(true);
     setCalError('');
 
-    fetch(
-      `/api/availability?venueId=${encodeURIComponent(venue.id)}&month=${monthStr}`
-    )
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Gagal memuatkan jadual kekosongan.');
-        return res.json();
-      })
-      .then((data) => {
+    fetchMonthlyAvailability(venue.id, monthStr)
+      .then((days) => {
         if (!cancelled) {
-          setAvailabilityMap(data.days ?? {});
+          setAvailabilityMap(days);
         }
       })
       .catch((err) => {
@@ -245,29 +243,21 @@ export function AvailabilityBookingSection({
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          venueId: venue.id,
-          date: selectedDate,
-          slot: selectedSlot,
-          attendees,
-          layout,
-          customerName: customerName.trim(),
-          organization: organization.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          eventTitle: eventTitle.trim(),
-          notes: notes.trim(),
-          addonIds: selectedAddons,
-        }),
+      const booking = await createBooking({
+        venueId: venue.id,
+        date: selectedDate,
+        slot: selectedSlot,
+        attendees,
+        layout,
+        customerName: customerName.trim(),
+        organization: organization.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        eventTitle: eventTitle.trim(),
+        notes: notes.trim(),
+        addonIds: selectedAddons,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Tempahan tidak dapat diproses.');
-      }
-      onBookingCreated(data.booking);
+      onBookingCreated(booking);
       setSelectedSlot('');
     } catch (err) {
       setFormError(
