@@ -44,8 +44,10 @@ function createInitialSeedBookings(): BookingRecord[] {
       venueId: 'dewan-anggerik',
       venueName: 'Dewan Anggerik',
       date: d2,
+      dates: [d2],
+      daysCount: 1,
       slot: 'sepenuh-hari',
-      slotLabel: 'Sepenuh Hari (08:00 – 18:00)',
+      slotLabel: 'Sehari (08:00 – 18:00)',
       attendees: 180,
       layout: 'Teater (200 org)',
       customerName: 'Dato’ Ahmad Zulkifli',
@@ -79,8 +81,10 @@ function createInitialSeedBookings(): BookingRecord[] {
       venueId: 'dewan-anggerik',
       venueName: 'Dewan Anggerik',
       date: d6,
+      dates: [d6],
+      daysCount: 1,
       slot: 'pagi',
-      slotLabel: 'Sesi Pagi (Separuh Hari) (08:00 – 13:00)',
+      slotLabel: 'Sesi Pagi (08:00 – 13:00)',
       attendees: 120,
       layout: 'Bilik Darjah (120 org)',
       customerName: 'Puan Nurul Huda',
@@ -105,8 +109,10 @@ function createInitialSeedBookings(): BookingRecord[] {
       venueId: 'bilik-mesyuarat',
       venueName: 'Bilik Mesyuarat Eksekutif',
       date: d4,
+      dates: [d4],
+      daysCount: 1,
       slot: 'pagi',
-      slotLabel: 'Sesi Pagi (Separuh Hari) (08:00 – 13:00)',
+      slotLabel: 'Sesi Pagi (08:00 – 13:00)',
       attendees: 16,
       layout: 'Meja Lembaga / Boardroom (20 org)',
       customerName: 'Encik Hafizuddin Razak',
@@ -140,8 +146,10 @@ function createInitialSeedBookings(): BookingRecord[] {
       venueId: 'bilik-seminar-1',
       venueName: 'Bilik Seminar 1',
       date: d9,
+      dates: [d9],
+      daysCount: 1,
       slot: 'sepenuh-hari',
-      slotLabel: 'Sepenuh Hari (08:00 – 18:00)',
+      slotLabel: 'Sehari (08:00 – 18:00)',
       attendees: 28,
       layout: 'Bilik Darjah (30 org)',
       customerName: 'Cik Farah Nadiah',
@@ -215,6 +223,13 @@ function computeDayStatus(bookedSlots: TimeSlotId[]): 'tersedia' | 'terhad' | 'p
   return 'terhad';
 }
 
+function getRecordDates(record: BookingRecord): string[] {
+  if (Array.isArray(record.dates) && record.dates.length > 0) {
+    return record.dates;
+  }
+  return record.date ? [record.date] : [];
+}
+
 function roundCurrency(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -238,7 +253,7 @@ async function startServer() {
 
     if (date && venueId) {
       const dayBookings = bookings.filter(
-        (b) => b.venueId === venueId && b.date === date
+        (b) => b.venueId === venueId && getRecordDates(b).includes(date)
       );
       const bookedSlots = dayBookings.map((b) => b.slot);
       const availability: DayAvailability = {
@@ -251,22 +266,23 @@ async function startServer() {
 
     if (venueId && month) {
       const monthPrefix = month; // YYYY-MM
-      const filtered = bookings.filter(
-        (b) => b.venueId === venueId && b.date.startsWith(monthPrefix)
-      );
+      const filtered = bookings.filter((b) => b.venueId === venueId);
       const map: Record<string, DayAvailability> = {};
       for (const item of filtered) {
-        if (!map[item.date]) {
-          map[item.date] = {
-            date: item.date,
-            bookedSlots: [],
-            status: 'tersedia',
-          };
+        for (const d of getRecordDates(item)) {
+          if (!d.startsWith(monthPrefix)) continue;
+          if (!map[d]) {
+            map[d] = {
+              date: d,
+              bookedSlots: [],
+              status: 'tersedia',
+            };
+          }
+          if (!map[d].bookedSlots.includes(item.slot)) {
+            map[d].bookedSlots.push(item.slot);
+          }
+          map[d].status = computeDayStatus(map[d].bookedSlots);
         }
-        if (!map[item.date].bookedSlots.includes(item.slot)) {
-          map[item.date].bookedSlots.push(item.slot);
-        }
-        map[item.date].status = computeDayStatus(map[item.date].bookedSlots);
       }
       return res.json({ venueId, month, days: map });
     }
@@ -300,6 +316,7 @@ async function startServer() {
     const {
       venueId,
       date,
+      dates,
       slot,
       attendees,
       layout,
@@ -317,15 +334,27 @@ async function startServer() {
       return res.status(400).json({ error: 'Ruang atau dewan yang dipilih tidak sah.' });
     }
 
-    if (!date || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: 'Tarikh tempahan tidak sah.' });
+    const rawDates: unknown[] =
+      Array.isArray(dates) && dates.length > 0
+        ? dates
+        : typeof date === 'string' && date
+        ? [date]
+        : [];
+
+    const validDates = rawDates.filter(
+      (d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
+    );
+    const uniqueDates = Array.from(new Set(validDates)).sort();
+
+    if (uniqueDates.length === 0 || uniqueDates.length !== rawDates.filter((d) => typeof d === 'string').length) {
+      return res.status(400).json({ error: 'Sila pilih sekurang-kurangnya satu tarikh tempahan yang sah.' });
     }
 
     const todayStr = formatDateYMD(new Date());
-    if (date < todayStr) {
+    if (uniqueDates.some((d) => d < todayStr)) {
       return res
         .status(400)
-        .json({ error: 'Tarikh yang dipilih telah berlalu. Sila pilih tarikh akan datang.' });
+        .json({ error: 'Terdapat tarikh yang telah berlalu. Sila pilih tarikh hari ini atau akan datang.' });
     }
 
     const slotDef = TIME_SLOTS.find((s) => s.id === slot);
@@ -347,19 +376,30 @@ async function startServer() {
     }
 
     const bookings = ensureStorage();
-    const activeDayBookings = bookings.filter(
-      (b) => b.venueId === venue.id && b.date === date && b.status !== 'Dibatalkan'
+    const activeVenueBookings = bookings.filter(
+      (b) => b.venueId === venue.id && b.status !== 'Dibatalkan'
     );
-    const existingSlots = activeDayBookings.map((b) => b.slot);
 
-    if (hasSlotConflict(existingSlots, slotDef.id)) {
+    const conflictingDates: string[] = [];
+    for (const targetDate of uniqueDates) {
+      const existingSlots = activeVenueBookings
+        .filter((b) => getRecordDates(b).includes(targetDate))
+        .map((b) => b.slot);
+      if (hasSlotConflict(existingSlots, slotDef.id)) {
+        conflictingDates.push(targetDate);
+      }
+    }
+
+    if (conflictingDates.length > 0) {
       return res.status(409).json({
-        error: `Maaf, ${venue.name} pada ${date} untuk ${slotDef.label} tidak lagi tersedia kerana bertindih dengan tempahan sedia ada.`,
+        error: `Maaf, ${venue.name} pada ${conflictingDates.join(', ')} untuk ${slotDef.label} tidak lagi tersedia kerana bertindih dengan tempahan sedia ada.`,
       });
     }
 
-    const baseAmount =
+    const daysCount = uniqueDates.length;
+    const unitBaseRate =
       slotDef.rateType === 'full' ? venue.fullDayRate : venue.halfDayRate;
+    const baseAmount = roundCurrency(unitBaseRate * daysCount);
 
     const selectedAddonIds: string[] = Array.isArray(addonIds) ? addonIds : [];
     const selectedAddons: BookingAddonSelection[] = [];
@@ -368,7 +408,7 @@ async function startServer() {
     for (const addonId of selectedAddonIds) {
       const addon = ADDONS.find((a) => a.id === addonId);
       if (!addon) continue;
-      const quantity = addon.unit === 'per_orang' ? guestCount : 1;
+      const quantity = addon.unit === 'per_orang' ? guestCount * daysCount : daysCount;
       const subtotal = roundCurrency(addon.price * quantity);
       addonsAmount = roundCurrency(addonsAmount + subtotal);
       selectedAddons.push({
@@ -384,15 +424,18 @@ async function startServer() {
     const sstAmount = roundCurrency(subtotalBeforeTax * SST_RATE);
     const totalAmount = roundCurrency(subtotalBeforeTax + sstAmount);
 
+    const primaryDate = uniqueDates[0];
     const nextSeq = 1001 + bookings.length;
-    const referenceCode = `DP-${date.slice(0, 4)}-${nextSeq}`;
+    const referenceCode = `DP-${primaryDate.slice(0, 4)}-${nextSeq}`;
 
     const newBooking: BookingRecord = {
       id: `bk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       referenceCode,
       venueId: venue.id,
       venueName: venue.name,
-      date,
+      date: primaryDate,
+      dates: uniqueDates,
+      daysCount,
       slot: slotDef.id,
       slotLabel: `${slotDef.label} (${slotDef.timeRange})`,
       attendees: guestCount,

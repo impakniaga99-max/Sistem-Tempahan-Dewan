@@ -12,7 +12,13 @@ import {
 import { FPX_BANKS } from '../data/venues.ts';
 import { processPayment } from '../services/bookingService.ts';
 import type { BookingRecord, PaymentMethodId } from '../types.ts';
-import { formatDateMalay, formatDateTimeMalay, formatRM } from '../utils/format.ts';
+import {
+  formatBookingDatesMalay,
+  formatDateMalay,
+  formatDateTimeMalay,
+  formatRM,
+  getBookingDates,
+} from '../utils/format.ts';
 
 interface PaymentModalProps {
   booking: BookingRecord | null;
@@ -169,8 +175,13 @@ export function PaymentModal({
                 <div>
                   <p className="text-xs text-slate-500">Tarikh & Slot Masa</p>
                   <p className="font-semibold text-slate-900">
-                    {formatDateMalay(booking.date, true)}
+                    {formatBookingDatesMalay(booking.date, booking.dates, true)}
                   </p>
+                  {getBookingDates(booking).length > 1 && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {getBookingDates(booking).map((d) => formatDateMalay(d)).join(' · ')}
+                    </p>
+                  )}
                   <p className="text-xs text-slate-600 mt-0.5">{booking.slotLabel}</p>
                 </div>
                 <div>
@@ -189,7 +200,12 @@ export function PaymentModal({
 
               <div className="p-4 space-y-2">
                 <div className="flex justify-between text-xs text-slate-600">
-                  <span>Kadar Sewaan Asas</span>
+                  <span>
+                    Kadar Sewaan Asas
+                    {getBookingDates(booking).length > 1
+                      ? ` (${getBookingDates(booking).length} hari)`
+                      : ''}
+                  </span>
                   <span className="font-mono tabular-nums">
                     {formatRM(booking.baseAmount)}
                   </span>
@@ -261,7 +277,8 @@ export function PaymentModal({
             <div className="p-4 rounded-xl bg-[#F8F9FA] border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold text-slate-900">
-                  {booking.venueName} · {formatDateMalay(booking.date)}
+                  {booking.venueName} ·{' '}
+                  {formatBookingDatesMalay(booking.date, booking.dates)}
                 </p>
                 <p className="text-xs text-slate-600 mt-0.5">
                   {booking.slotLabel} · {booking.attendees} orang

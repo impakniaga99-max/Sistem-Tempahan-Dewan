@@ -153,14 +153,14 @@ export function VenueShowcase({
                   <div className="mt-6 pt-5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-baseline gap-4">
                       <div>
-                        <p className="text-xs text-slate-500">Separuh Hari</p>
+                        <p className="text-xs text-slate-500">Sesi Pagi / Petang</p>
                         <p className="text-base font-bold text-slate-900 font-mono tabular-nums">
                           {formatRM(venue.halfDayRate)}
                         </p>
                       </div>
                       <div className="h-7 w-px bg-slate-200" aria-hidden="true" />
                       <div>
-                        <p className="text-xs text-slate-500">Sepenuh Hari</p>
+                        <p className="text-xs text-slate-500">Sehari</p>
                         <p className="text-base font-bold text-slate-900 font-mono tabular-nums">
                           {formatRM(venue.fullDayRate)}
                         </p>

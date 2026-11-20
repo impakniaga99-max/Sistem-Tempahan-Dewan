@@ -48,7 +48,9 @@ export interface BookingRecord {
   referenceCode: string;
   venueId: string;
   venueName: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD (tarikh mula)
+  dates?: string[]; // Senarai semua tarikh tempahan (YYYY-MM-DD)
+  daysCount?: number; // Bilangan hari tempahan
   slot: TimeSlotId;
   slotLabel: string;
   attendees: number;

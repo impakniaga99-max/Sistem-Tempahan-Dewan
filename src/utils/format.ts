@@ -56,6 +56,53 @@ export function toYMD(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+const MALAY_MONTHS_SHORT = [
+  'Jan',
+  'Feb',
+  'Mac',
+  'Apr',
+  'Mei',
+  'Jun',
+  'Jul',
+  'Ogos',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Dis',
+];
+
+export function formatDateShortMalay(ymd: string): string {
+  const parts = ymd.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return ymd;
+  const [, m, d] = parts;
+  return `${d} ${MALAY_MONTHS_SHORT[m - 1] ?? ''}`;
+}
+
+export function getBookingDates(booking: { date: string; dates?: string[] }): string[] {
+  if (Array.isArray(booking.dates) && booking.dates.length > 0) {
+    return [...booking.dates].sort();
+  }
+  return booking.date ? [booking.date] : [];
+}
+
+export function formatBookingDatesMalay(
+  date: string,
+  dates?: string[],
+  withDayOnSingle = false
+): string {
+  const list = getBookingDates({ date, dates });
+  if (list.length === 0) return '-';
+  if (list.length === 1) {
+    return formatDateMalay(list[0], withDayOnSingle);
+  }
+  if (list.length <= 3) {
+    return `${list.map(formatDateShortMalay).join(', ')} (${list.length} hari)`;
+  }
+  return `${formatDateShortMalay(list[0])} – ${formatDateShortMalay(
+    list[list.length - 1]
+  )} (${list.length} hari)`;
+}
+
 export function formatDateTimeMalay(iso: string): string {
   const dt = new Date(iso);
   if (Number.isNaN(dt.getTime())) return iso;

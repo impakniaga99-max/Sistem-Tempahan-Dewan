@@ -25,7 +25,12 @@ import type {
   BookingRecord,
   BookingStatus,
 } from '../types.ts';
-import { formatDateMalay, formatDateTimeMalay, formatRM } from '../utils/format.ts';
+import {
+  formatBookingDatesMalay,
+  formatDateTimeMalay,
+  formatRM,
+  getBookingDates,
+} from '../utils/format.ts';
 
 interface AdminPageProps {
   onBackToPublic: () => void;
@@ -196,7 +201,7 @@ export function AdminPage({
         [
           b.referenceCode,
           b.venueName,
-          b.date,
+          getBookingDates(b).join('; '),
           b.slotLabel,
           b.attendees,
           b.customerName,
@@ -533,7 +538,7 @@ export function AdminPage({
                 Permintaan Mengikut Slot Masa
               </h2>
               <p className="text-xs text-slate-500 mt-0.5 mb-4">
-                Taburan tempahan aktif antara sesi pagi, petang, dan sepenuh hari
+                Taburan tempahan aktif antara sesi pagi, sesi petang, dan sehari
               </p>
 
               <div className="space-y-3">
@@ -689,14 +694,14 @@ export function AdminPage({
                         </td>
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           <p className="font-medium text-slate-900">
-                            {formatDateMalay(b.date)}
+                            {formatBookingDatesMalay(b.date, b.dates)}
                           </p>
                           <p className="text-slate-500">
                             {b.slot === 'pagi'
-                              ? 'Pagi (08:00–13:00)'
+                              ? 'Sesi Pagi (08:00–13:00)'
                               : b.slot === 'petang'
-                              ? 'Petang (14:00–19:00)'
-                              : 'Sepenuh Hari'}
+                              ? 'Sesi Petang (14:00–19:00)'
+                              : 'Sehari (08:00–18:00)'}
                           </p>
                         </td>
                         <td className="py-3.5 px-4 whitespace-nowrap">

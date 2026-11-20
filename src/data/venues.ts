@@ -108,21 +108,21 @@ export const TIME_SLOTS: {
 }[] = [
   {
     id: 'pagi',
-    label: 'Sesi Pagi (Separuh Hari)',
+    label: 'Sesi Pagi',
     timeRange: '08:00 – 13:00',
     rateType: 'half',
     description: 'Tempoh 5 jam termasuk 30 minit persediaan awal.',
   },
   {
     id: 'petang',
-    label: 'Sesi Petang (Separuh Hari)',
+    label: 'Sesi Petang',
     timeRange: '14:00 – 19:00',
     rateType: 'half',
     description: 'Tempoh 5 jam termasuk 30 minit persediaan awal.',
   },
   {
     id: 'sepenuh-hari',
-    label: 'Sepenuh Hari',
+    label: 'Sehari',
     timeRange: '08:00 – 18:00',
     rateType: 'full',
     description: 'Tempoh 10 jam penuh dengan kadar penjimatan harian.',

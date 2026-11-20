@@ -8,6 +8,7 @@ import {
   Clock,
   Lock,
   Users,
+  X,
 } from 'lucide-react';
 import { ADDONS, TIME_SLOTS, VENUES } from '../data/venues.ts';
 import {
@@ -21,6 +22,7 @@ import type {
 } from '../types.ts';
 import {
   formatDateMalay,
+  formatDateShortMalay,
   formatMonthYearMalay,
   formatRM,
   toYMD,
@@ -53,7 +55,10 @@ export function AvailabilityBookingSection({
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
-  const [selectedDate, setSelectedDate] = useState(tomorrowStr);
+  const [selectedDates, setSelectedDates] = useState<string[]>([tomorrowStr]);
+  const [selectMode, setSelectMode] = useState<'multi' | 'range'>('multi');
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+
   const [availabilityMap, setAvailabilityMap] = useState<
     Record<string, DayAvailability>
   >({});
@@ -92,7 +97,12 @@ export function AvailabilityBookingSection({
     setFormError('');
   }, [venue]);
 
-  // Fetch monthly availability for selected venue
+  // Reset cached availability when venue or refreshTrigger changes
+  useEffect(() => {
+    setAvailabilityMap({});
+  }, [venue.id, refreshTrigger]);
+
+  // Fetch monthly availability for viewed month (merge across months)
   useEffect(() => {
     const monthStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
     let cancelled = false;
@@ -102,7 +112,7 @@ export function AvailabilityBookingSection({
     fetchMonthlyAvailability(venue.id, monthStr)
       .then((days) => {
         if (!cancelled) {
-          setAvailabilityMap(days);
+          setAvailabilityMap((prev) => ({ ...prev, ...days }));
         }
       })
       .catch((err) => {
@@ -120,6 +130,29 @@ export function AvailabilityBookingSection({
       cancelled = true;
     };
   }, [venue.id, viewYear, viewMonth, refreshTrigger]);
+
+  // Also ensure availability for any month present in selectedDates is loaded
+  useEffect(() => {
+    const months = Array.from(new Set(selectedDates.map((d) => d.slice(0, 7))));
+    const viewMonthStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+    const otherMonths = months.filter((m) => m !== viewMonthStr);
+    if (otherMonths.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(otherMonths.map((m) => fetchMonthlyAvailability(venue.id, m)))
+      .then((results) => {
+        if (cancelled) return;
+        const merged = Object.assign({}, ...results);
+        setAvailabilityMap((prev) => ({ ...prev, ...merged }));
+      })
+      .catch(() => {
+        // ignore secondary month prefetch errors
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDates, venue.id, viewYear, viewMonth, refreshTrigger]);
 
   // Compute calendar grid days (Monday first)
   const calendarDays = useMemo(() => {
@@ -166,14 +199,66 @@ export function AvailabilityBookingSection({
     }
   }
 
-  const selectedDayInfo = availabilityMap[selectedDate];
-  const bookedSlotsOnDay = selectedDayInfo?.bookedSlots ?? [];
+  function handleCalendarDateClick(ymd: string) {
+    if (ymd < todayStr) return;
+    setFormError('');
+
+    if (selectMode === 'multi') {
+      setRangeStart(null);
+      setSelectedDates((prev) =>
+        prev.includes(ymd)
+          ? prev.filter((d) => d !== ymd)
+          : [...prev, ymd].sort()
+      );
+      return;
+    }
+
+    // Range selection mode
+    if (!rangeStart) {
+      setRangeStart(ymd);
+      setSelectedDates([ymd]);
+    } else {
+      const start = rangeStart <= ymd ? rangeStart : ymd;
+      const end = rangeStart <= ymd ? ymd : rangeStart;
+      const [sy, sm, sd] = start.split('-').map(Number);
+      const [ey, em, ed] = end.split('-').map(Number);
+      const cursor = new Date(sy, sm - 1, sd);
+      const endDate = new Date(ey, em - 1, ed);
+      const rangeList: string[] = [];
+
+      let guard = 0;
+      while (cursor <= endDate && guard < 31) {
+        const curYmd = toYMD(cursor);
+        if (curYmd >= todayStr) {
+          rangeList.push(curYmd);
+        }
+        cursor.setDate(cursor.getDate() + 1);
+        guard += 1;
+      }
+
+      setSelectedDates(rangeList);
+      setRangeStart(null);
+    }
+  }
+
+  function removeSelectedDate(ymd: string) {
+    setSelectedDates((prev) => prev.filter((d) => d !== ymd));
+    if (rangeStart === ymd) setRangeStart(null);
+  }
+
+  function getSlotConflicts(slotId: TimeSlotId): string[] {
+    return selectedDates.filter((d) => {
+      if (d < todayStr) return true;
+      const bookedSlots = availabilityMap[d]?.bookedSlots ?? [];
+      if (bookedSlots.includes('sepenuh-hari')) return true;
+      if (slotId === 'sepenuh-hari') return bookedSlots.length > 0;
+      return bookedSlots.includes(slotId);
+    });
+  }
 
   function isSlotAvailable(slotId: TimeSlotId): boolean {
-    if (selectedDate < todayStr) return false;
-    if (bookedSlotsOnDay.includes('sepenuh-hari')) return false;
-    if (slotId === 'sepenuh-hari') return bookedSlotsOnDay.length === 0;
-    return !bookedSlotsOnDay.includes(slotId);
+    if (selectedDates.length === 0) return false;
+    return getSlotConflicts(slotId).length === 0;
   }
 
   // Clear selected slot if it became unavailable on date/venue switch
@@ -181,7 +266,7 @@ export function AvailabilityBookingSection({
     if (selectedSlot && !isSlotAvailable(selectedSlot)) {
       setSelectedSlot('');
     }
-  }, [selectedDate, bookedSlotsOnDay, selectedSlot]);
+  }, [selectedDates, availabilityMap, selectedSlot]);
 
   function toggleAddon(addonId: string) {
     setSelectedAddons((prev) =>
@@ -191,39 +276,48 @@ export function AvailabilityBookingSection({
     );
   }
 
-  // Cost calculation
+  const daysCount = selectedDates.length;
+
+  // Cost calculation (scales by number of selected days)
   const pricing = useMemo(() => {
     const slotDef = TIME_SLOTS.find((s) => s.id === selectedSlot);
-    const baseAmount = slotDef
+    const unitRate = slotDef
       ? slotDef.rateType === 'full'
         ? venue.fullDayRate
         : venue.halfDayRate
       : 0;
+    const effectiveDays = Math.max(0, daysCount);
+    const baseAmount = Math.round(unitRate * effectiveDays * 100) / 100;
 
     let addonsAmount = 0;
+    const addonDaysMultiplier = Math.max(1, effectiveDays);
     for (const id of selectedAddons) {
       const addon = ADDONS.find((a) => a.id === id);
       if (!addon) continue;
-      const qty = addon.unit === 'per_orang' ? Math.max(1, attendees) : 1;
+      const qty =
+        addon.unit === 'per_orang'
+          ? Math.max(1, attendees) * addonDaysMultiplier
+          : addonDaysMultiplier;
       addonsAmount += addon.price * qty;
     }
+    addonsAmount = Math.round(addonsAmount * 100) / 100;
 
     const subtotal = baseAmount + addonsAmount;
     const sst = Math.round(subtotal * SST_RATE * 100) / 100;
     const total = Math.round((subtotal + sst) * 100) / 100;
-    return { baseAmount, addonsAmount, sst, total };
-  }, [selectedSlot, venue, selectedAddons, attendees]);
+    return { unitRate, baseAmount, addonsAmount, sst, total };
+  }, [selectedSlot, venue, selectedAddons, attendees, daysCount]);
 
   async function handleSubmitBooking(e: React.FormEvent) {
     e.preventDefault();
     setFormError('');
 
-    if (!selectedDate || selectedDate < todayStr) {
-      setFormError('Sila pilih tarikh hari ini atau tarikh akan datang.');
+    if (selectedDates.length === 0 || selectedDates.some((d) => d < todayStr)) {
+      setFormError('Sila pilih sekurang-kurangnya satu tarikh hari ini atau akan datang.');
       return;
     }
     if (!selectedSlot) {
-      setFormError('Sila pilih slot masa (Pagi, Petang, atau Sepenuh Hari).');
+      setFormError('Sila pilih slot masa (Sesi Pagi, Sesi Petang, atau Sehari).');
       return;
     }
     if (attendees < 1 || attendees > venue.capacity) {
@@ -245,7 +339,8 @@ export function AvailabilityBookingSection({
     try {
       const booking = await createBooking({
         venueId: venue.id,
-        date: selectedDate,
+        date: selectedDates[0],
+        dates: selectedDates,
         slot: selectedSlot,
         attendees,
         layout,
@@ -339,7 +434,7 @@ export function AvailabilityBookingSection({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left Column: Interactive Monthly Availability Calendar */}
           <div className="lg:col-span-5 bg-[#F8F9FA] border border-slate-200 rounded-xl p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-4 mb-5">
+            <div className="flex items-center justify-between gap-4 mb-4">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
                   {formatMonthYearMalay(viewYear, viewMonth)}
@@ -369,6 +464,69 @@ export function AvailabilityBookingSection({
               </div>
             </div>
 
+            {/* Selection Mode Toggle: Multi-day vs Range */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-200">
+              <div
+                className="inline-flex items-center p-0.5 bg-white border border-slate-200 rounded-lg"
+                role="tablist"
+                aria-label="Mod pemilihan tarikh"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selectMode === 'multi'}
+                  onClick={() => {
+                    setSelectMode('multi');
+                    setRangeStart(null);
+                  }}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    selectMode === 'multi'
+                      ? 'bg-[#0F4C5C] text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Pilih Beberapa Hari
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selectMode === 'range'}
+                  onClick={() => {
+                    setSelectMode('range');
+                    setRangeStart(null);
+                  }}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    selectMode === 'range'
+                      ? 'bg-[#0F4C5C] text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Julat Tarikh
+                </button>
+              </div>
+
+              {selectedDates.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDates([]);
+                    setRangeStart(null);
+                  }}
+                  className="text-xs font-medium text-slate-600 hover:text-red-700 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  Kosongkan ({selectedDates.length})
+                </button>
+              )}
+            </div>
+
+            {selectMode === 'range' && (
+              <p className="mb-3 text-xs text-[#0F4C5C] font-medium">
+                {rangeStart
+                  ? `Tarikh mula: ${formatDateShortMalay(rangeStart)} — klik tarikh tamat.`
+                  : 'Klik tarikh mula, kemudian klik tarikh tamat untuk tempahan berturutan.'}
+              </p>
+            )}
+
             {calError && (
               <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -396,7 +554,8 @@ export function AvailabilityBookingSection({
                 const isPast = cell.ymd < todayStr;
                 const dayInfo = availabilityMap[cell.ymd];
                 const status = dayInfo?.status ?? 'tersedia';
-                const isSelected = cell.ymd === selectedDate;
+                const isSelected = selectedDates.includes(cell.ymd);
+                const isRangeAnchor = rangeStart === cell.ymd;
 
                 let cellStyle =
                   'bg-white border-slate-200 text-slate-900 hover:border-[#0F4C5C]';
@@ -410,7 +569,7 @@ export function AvailabilityBookingSection({
                   subLabelColor = 'text-slate-400';
                 } else if (status === 'penuh') {
                   cellStyle = isSelected
-                    ? 'bg-red-50 border-red-600 text-red-900 ring-1 ring-red-600'
+                    ? 'bg-red-50 border-red-600 text-red-900 ring-2 ring-red-600'
                     : 'bg-red-50/70 border-red-200 text-red-800 hover:border-red-400';
                   subLabel = 'Penuh';
                   subLabelColor = 'text-red-700';
@@ -418,12 +577,12 @@ export function AvailabilityBookingSection({
                   cellStyle = isSelected
                     ? 'bg-amber-50 border-[#0F4C5C] text-slate-900 ring-2 ring-[#0F4C5C]'
                     : 'bg-amber-50/70 border-amber-300 text-slate-900 hover:border-amber-500';
-                  subLabel = 'Terhad';
-                  subLabelColor = 'text-amber-800';
-                } else if (isSelected) {
+                  subLabel = isSelected ? 'Dipilih*' : 'Terhad';
+                  subLabelColor = isSelected ? 'text-[#0F4C5C]' : 'text-amber-800';
+                } else if (isSelected || isRangeAnchor) {
                   cellStyle =
                     'bg-[#0F4C5C] border-[#0F4C5C] text-white ring-2 ring-[#0F4C5C]/25';
-                  subLabel = 'Dipilih';
+                  subLabel = isRangeAnchor && selectMode === 'range' ? 'Mula' : 'Dipilih';
                   subLabelColor = 'text-slate-100';
                 }
 
@@ -432,7 +591,8 @@ export function AvailabilityBookingSection({
                     key={cell.ymd}
                     type="button"
                     disabled={isPast}
-                    onClick={() => setSelectedDate(cell.ymd)}
+                    onClick={() => handleCalendarDateClick(cell.ymd)}
+                    aria-pressed={isSelected}
                     aria-label={`${formatDateMalay(cell.ymd)} - ${
                       isPast ? 'Tarikh berlalu' : subLabel
                     }`}
@@ -473,13 +633,13 @@ export function AvailabilityBookingSection({
               onSubmit={handleSubmitBooking}
               className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 space-y-7"
             >
-              {/* Step 1: Date & Slot Picker */}
+              {/* Step 1: Selected Dates & Slot Picker */}
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-200">
                   <div className="flex items-center gap-2.5">
                     <Calendar className="w-4 h-4 text-[#0F4C5C]" />
                     <h3 className="text-base font-bold text-slate-900">
-                      Slot Masa untuk {formatDateMalay(selectedDate, true)}
+                      Pilihan Slot Masa ({daysCount} Hari Dipilih)
                     </h3>
                   </div>
                   <span className="text-xs text-slate-500 font-medium">
@@ -487,9 +647,45 @@ export function AvailabilityBookingSection({
                   </span>
                 </div>
 
+                {/* Selected Dates Chips Tray */}
+                <div className="mt-4 p-3 rounded-lg bg-[#F8F9FA] border border-slate-200">
+                  {selectedDates.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      Belum ada tarikh dipilih. Klik satu atau beberapa hari pada kalendar di sebelah kiri.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium text-slate-600 mr-1">
+                        Tarikh:
+                      </span>
+                      {selectedDates.map((d) => (
+                        <span
+                          key={d}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-800 font-mono tabular-nums"
+                        >
+                          <span>
+                            {selectedDates.length === 1
+                              ? formatDateMalay(d, true)
+                              : formatDateShortMalay(d)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSelectedDate(d)}
+                            aria-label={`Buang tarikh ${formatDateMalay(d)}`}
+                            className="text-slate-400 hover:text-red-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                   {TIME_SLOTS.map((slot) => {
-                    const available = isSlotAvailable(slot.id);
+                    const conflicts = getSlotConflicts(slot.id);
+                    const available = selectedDates.length > 0 && conflicts.length === 0;
                     const active = selectedSlot === slot.id;
                     const rate =
                       slot.rateType === 'full'
@@ -502,7 +698,7 @@ export function AvailabilityBookingSection({
                         type="button"
                         disabled={!available}
                         onClick={() => setSelectedSlot(slot.id)}
-                        className={`text-left p-4 rounded-xl border transition-colors flex flex-col justify-between min-h-[116px] ${
+                        className={`text-left p-4 rounded-xl border transition-colors flex flex-col justify-between min-h-[124px] ${
                           !available
                             ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
                             : active
@@ -514,42 +710,58 @@ export function AvailabilityBookingSection({
                           <div className="flex items-center justify-between gap-2 mb-1">
                             <span
                               className={`text-xs font-medium inline-flex items-center gap-1 ${
-                                available
+                                selectedDates.length === 0
+                                  ? 'text-slate-500'
+                                  : available
                                   ? active
                                     ? 'text-[#0F4C5C]'
                                     : 'text-emerald-700'
                                   : 'text-red-600'
                               }`}
                             >
-                              {available ? (
+                              {selectedDates.length === 0 ? (
+                                <span>Pilih tarikh</span>
+                              ) : available ? (
                                 <>
-                                  <Check className="w-3.5 h-3.5" />
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
                                   <span>Tersedia</span>
                                 </>
                               ) : (
                                 <>
-                                  <Lock className="w-3.5 h-3.5" />
-                                  <span>Ditempah</span>
+                                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">
+                                    Penuh ({formatDateShortMalay(conflicts[0])}
+                                    {conflicts.length > 1 ? ` +${conflicts.length - 1}` : ''})
+                                  </span>
                                 </>
                               )}
                             </span>
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           </div>
                           <p className="text-sm font-semibold text-slate-900">
-                            {slot.id === 'pagi'
-                              ? 'Sesi Pagi'
-                              : slot.id === 'petang'
-                              ? 'Sesi Petang'
-                              : 'Sepenuh Hari'}
+                            {slot.label}
                           </p>
                           <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
                             {slot.timeRange}
                           </p>
                         </div>
 
-                        <p className="text-sm font-bold text-slate-900 font-mono tabular-nums mt-3">
-                          {formatRM(rate)}
-                        </p>
+                        <div className="mt-3">
+                          <p className="text-sm font-bold text-slate-900 font-mono tabular-nums">
+                            {formatRM(rate)}
+                            {daysCount > 1 && (
+                              <span className="text-xs font-normal text-slate-500">
+                                {' '}
+                                / hari
+                              </span>
+                            )}
+                          </p>
+                          {daysCount > 1 && (
+                            <p className="text-[11px] font-medium text-[#0F4C5C] font-mono tabular-nums mt-0.5">
+                              {daysCount} hari = {formatRM(rate * daysCount)}
+                            </p>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -776,14 +988,17 @@ export function AvailabilityBookingSection({
                       {selectedSlot
                         ? TIME_SLOTS.find((s) => s.id === selectedSlot)?.label
                         : 'Belum pilih slot'}
-                      )
+                      {daysCount > 1 ? ` × ${daysCount} hari` : ''})
                     </span>
                     <span className="font-mono tabular-nums font-medium text-slate-900">
                       {formatRM(pricing.baseAmount)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>Pakej Tambahan ({selectedAddons.length} item)</span>
+                    <span>
+                      Pakej Tambahan ({selectedAddons.length} item
+                      {daysCount > 1 && selectedAddons.length > 0 ? ` × ${daysCount} hari` : ''})
+                    </span>
                     <span className="font-mono tabular-nums font-medium text-slate-900">
                       {formatRM(pricing.addonsAmount)}
                     </span>
