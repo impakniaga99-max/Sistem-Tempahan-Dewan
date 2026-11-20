@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Tempahan Dewan Pro",
+  "description": "Sistem tempahan dewan seminar dan bilik mesyuarat profesional dengan semakan kekosongan tarikh masa nyata dan pembayaran dalam talian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
