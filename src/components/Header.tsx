@@ -60,16 +60,6 @@ export function Header({
             Kekosongan
           </a>
           <a
-            href="#status-tempahan"
-            onClick={(e) => {
-              e.preventDefault();
-              handleNavClick('status-tempahan');
-            }}
-            className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-          >
-            Status
-          </a>
-          <a
             href="#lokasi-arah"
             onClick={(e) => {
               e.preventDefault();
@@ -135,13 +125,6 @@ export function Header({
             className="text-left py-2.5 px-2 text-sm font-medium text-slate-700 hover:text-slate-900 rounded-md hover:bg-slate-50"
           >
             Semak Kekosongan
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavClick('status-tempahan')}
-            className="text-left py-2.5 px-2 text-sm font-medium text-slate-700 hover:text-slate-900 rounded-md hover:bg-slate-50"
-          >
-            Status Tempahan
           </button>
           <button
             type="button"

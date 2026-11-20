@@ -594,7 +594,7 @@ export function LocationDirectionsSection() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
           <div>
             <p className="text-sm font-medium text-[#0F4C5C] mb-2">
-              05. Lokasi & Panduan Arah (Google Maps)
+              03. Lokasi & Panduan Arah (Google Maps)
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 [text-wrap:balance]">
               Panduan Arah ke Pusat Dewan Kami

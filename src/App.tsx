@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AdminPage } from './components/AdminPage.tsx';
 import { AvailabilityBookingSection } from './components/AvailabilityBookingSection.tsx';
-import { BookingLookupSection } from './components/BookingLookupSection.tsx';
 import { Footer } from './components/Footer.tsx';
 import { Header } from './components/Header.tsx';
 import { HeroSection } from './components/HeroSection.tsx';
 import { LocationDirectionsSection } from './components/LocationDirectionsSection.tsx';
 import { PaymentModal } from './components/PaymentModal.tsx';
-import { RatesComparisonSection } from './components/RatesComparisonSection.tsx';
 import { VenueShowcase } from './components/VenueShowcase.tsx';
 import { VENUES } from './data/venues.ts';
 import type { BookingRecord } from './types.ts';
@@ -134,18 +132,6 @@ export default function App() {
               onSelectVenueId={setSelectedVenueId}
               refreshTrigger={refreshTrigger}
               onBookingCreated={handleBookingCreated}
-            />
-
-            <RatesComparisonSection
-              onSelectVenueForBooking={(id) =>
-                navigateToSection('semak-kekosongan', id)
-              }
-            />
-
-            <BookingLookupSection
-              refreshTrigger={refreshTrigger}
-              onOpenPaymentOrReceipt={(booking) => setActiveBookingModal(booking)}
-              onBookingCancelled={handleDataMutated}
             />
 
             <LocationDirectionsSection />
